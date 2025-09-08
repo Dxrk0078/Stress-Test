@@ -1,0 +1,1 @@
+# Chat logs will appear here when /chatlog on is enabled
