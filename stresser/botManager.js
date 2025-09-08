@@ -1,62 +1,99 @@
-// botManager.js
 const fs = require('fs');
-const crypto = require('crypto');
+const mineflayer = require('mineflayer');
+const ProxyAgent = require('proxy-agent');
 
-const accountsPath = './accounts.json';
-let accounts = require(accountsPath);
+let bots = {};
+let proxies = [];
 
-const activeBots = new Map();
-
-// Generate random password
-function randomPass() {
-  return crypto.randomBytes(4).toString('hex'); // 8-char random hex
+// load proxies
+if (fs.existsSync('proxies.txt')) {
+  proxies = fs.readFileSync('proxies.txt', 'utf-8')
+    .split('\n')
+    .map(l => l.trim())
+    .filter(Boolean);
 }
 
-// Ensure all accounts have passwords
-function initAccounts() {
-  let changed = false;
-  accounts.forEach(acc => {
-    if (!acc.password) {
-      acc.password = randomPass();
-      changed = true;
+const accounts = require('./accounts.json');
+
+function parseServer(serverStr) {
+  const [host, port] = serverStr.split(':');
+  return { host, port: parseInt(port) || 25565 };
+}
+
+function start(serverStr, count) {
+  const server = parseServer(serverStr);
+
+  for (let i = 0; i < count && i < accounts.length; i++) {
+    const account = accounts[i];
+    const proxy = proxies.length > 0 ? proxies[i % proxies.length] : null;
+
+    const botOptions = {
+      host: server.host,
+      port: server.port,
+      username: account.username,
+      password: account.password
+    };
+
+    if (proxy) {
+      botOptions.agent = new ProxyAgent(proxy);
     }
-  });
-  if (changed) {
-    fs.writeFileSync(accountsPath, JSON.stringify(accounts, null, 2));
-    console.log("[botManager] Added missing passwords to accounts.json");
+
+    const bot = mineflayer.createBot(botOptions);
+
+    bot.on('login', () => {
+      console.log(`[login] ${account.username} joined via ${proxy || 'direct'}`);
+    });
+
+    bot.on('spawn', () => {
+      // Try login first, fallback to register
+      bot.chat(`/login ${account.password}`);
+      setTimeout(() => {
+        bot.chat(`/register ${account.password} ${account.password}`);
+      }, 3000);
+    });
+
+    bot.on('chat', (username, message) => {
+      if (username !== account.username) {
+        fs.appendFileSync('chatlog.txt', `[${account.username}] ${username}: ${message}\n`);
+      }
+    });
+
+    bot.on('kicked', (reason) => {
+      console.log(`[kick] ${account.username}: ${reason}`);
+    });
+
+    bot.on('error', (err) => {
+      console.log(`[error] ${account.username}: ${err.message}`);
+    });
+
+    bots[account.username] = bot;
   }
 }
 
-function startBots(server, count, accList) {
-  initAccounts();
-  console.log(`[botManager] Starting ${count} bots on ${server}`);
-  for (let i = 0; i < count; i++) {
-    const acc = accList[i];
-    if (!acc) break;
-    activeBots.set(acc.username, { username: acc.username, password: acc.password, status: "connected (fake)" });
-    console.log(`[botManager] Bot ${acc.username} started with pass ${acc.password}`);
-  }
-}
-
-function stopBots(target = "all") {
-  if (target === "all") {
-    activeBots.clear();
-    console.log("[botManager] All bots stopped");
+function stop(target) {
+  if (target === 'all') {
+    Object.values(bots).forEach(bot => bot.end());
+    bots = {};
+    console.log("🛑 All bots stopped");
+  } else if (bots[target]) {
+    bots[target].end();
+    delete bots[target];
+    console.log(`🛑 Bot ${target} stopped`);
   } else {
-    activeBots.delete(target);
-    console.log(`[botManager] Bot ${target} stopped`);
+    console.log(`⚠️ Bot ${target} not found`);
   }
 }
 
-function broadcastChat(msg) {
-  console.log(`[botManager] (Fake) Bots say: ${msg}`);
+function chat(msg) {
+  Object.values(bots).forEach(bot => {
+    bot.chat(msg);
+  });
+  console.log(`[chat] Sent: ${msg}`);
 }
 
 function status() {
-  console.log(`[botManager] Active bots: ${activeBots.size}`);
-  for (const [name, info] of activeBots) {
-    console.log(` - ${name} (pass: ${info.password}, ${info.status})`);
-  }
+  console.log("📊 Active Bots:");
+  Object.keys(bots).forEach(name => console.log(` - ${name}`));
 }
 
-module.exports = { startBots, stopBots, broadcastChat, status, activeBots };
+module.exports = { start, stop, chat, status };
