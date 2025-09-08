@@ -1,38 +1,33 @@
-// commands.js
-const { startBots, stopBots, broadcastChat, status } = require('./botManager');
-
-function runCommand(input, ctx) {
-  const args = input.split(' ');
-  const cmd = args.shift();
+function handle(input, botManager) {
+  const [cmd, ...args] = input.split(" ");
 
   switch (cmd) {
     case '/help':
-      console.log("Commands:");
-      console.log("/start <ip:port> [count]");
-      console.log("/stop [all|username]");
-      console.log("/chat <msg>");
-      console.log("/status");
+      console.log(`/start <ip:port> <count> - start bots`);
+      console.log(`/stop <botname|all>     - stop bots`);
+      console.log(`/chat <msg>             - broadcast message`);
+      console.log(`/status                 - show bots`);
       break;
 
     case '/start':
-      startBots(args[0] || ctx.config.defaultServer, args[1] || ctx.accounts.length, ctx.accounts);
+      botManager.start(args[0], parseInt(args[1]));
       break;
 
     case '/stop':
-      stopBots(args[0] || "all");
+      botManager.stop(args[0] || 'all');
       break;
 
     case '/chat':
-      broadcastChat(args.join(' '));
+      botManager.chat(args.join(" "));
       break;
 
     case '/status':
-      status();
+      botManager.status();
       break;
 
     default:
-      console.log("❓ Unknown command. Type /help");
+      console.log("❓ Unknown command. Use /help");
   }
 }
 
-module.exports = { runCommand };
+module.exports = { handle };
