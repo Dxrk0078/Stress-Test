@@ -1,7 +1,4 @@
 {
   "defaultServer": "127.0.0.1:25565",
-  "maxBots": 10,
-  "autoReconnect": true,
-  "reconnectDelay": 5000,
-  "chatLog": true
+  "maxBots": 200
 }
